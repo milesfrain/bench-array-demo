@@ -2,22 +2,19 @@ module Test.Main where
 
 import Prelude
 
-import Data.Array (concat, difference, intersect, length, mapMaybe, nubEq, range, replicate, take, union, zipWith)
+import Data.Array (concat, difference, intersect, length, mapMaybe, nubEq, range, replicate, reverse, slice, take, takeEnd, union, zipWith)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (power)
 import Effect (Effect)
 import Effect.Class.Console (log, logShow)
 import Performance.Minibench (bench)
-import Random.LCG (mkSeed)
-import Test.QuickCheck.Gen (Gen, evalGen, shuffle)
 
 main :: Effect Unit
 main = do
   let
-    genState = {newSeed: mkSeed 0, size: 1}
-    arr1 = evalGen (arrayGen 0 100 [1,0,5,5]) genState
-    arr2 = evalGen (arrayGen 20 10 [1,2,0]) genState
+    arr1 = arrayGen 0 100 [1,0,5,5]
+    arr2 = arrayGen 20 10 [1,2,0]
 
     onlyEven x = if x `mod` 2 == 0 then Just x else Nothing
 
@@ -70,16 +67,42 @@ divUp n d = (n + d - 1) / d
 -- | For example, the above example could have three 5's
 -- | scattered throughout the output array.
 -- |
-arrayGen :: Int -> Int -> Array Int -> Gen (Array Int)
-arrayGen start total pattern = do
+arrayGen :: Int -> Int -> Array Int -> Array Int
+arrayGen start total pattern =
   let
     cycles = divUp total $ sum pattern
     initialSize = cycles * length pattern
     initial = range start $ start + initialSize - 1
     fullPattern = power pattern cycles
 
-  shuffleInitial <- shuffle initial
-  shuffle
-    $ take total
-    $ concat
-    $ zipWith replicate fullPattern shuffleInitial
+    shuffleInitial = shuffle initial
+
+  in
+    shuffle
+      $ take total
+      $ concat
+      $ zipWith replicate fullPattern shuffleInitial
+
+-- | Performs a structured (non-random) shuffle of array elements
+-- | which should be good enough for benchmarking most code that
+-- | involves sorting.
+-- |
+-- | Simulates a riffle shuffle where half the deck is flipped.
+-- |
+-- | Example:
+-- | shuffle [1,2,3,4,5,6,7,8] == [1,8,2,7,3,6,4,5]
+-- |
+shuffle :: forall a. Array a -> Array a
+shuffle arr =
+  let
+    len = length arr
+    halfLen = len / 2
+    firstHalf = take halfLen arr
+    lastHalf = takeEnd halfLen arr
+    -- Will be the center element for odd number of elements.
+    -- Otherwise an empty array.
+    oddPiece = slice halfLen ((len - 1) / 2) arr
+  in
+    append oddPiece
+      $ concat
+      $ zipWith (\a b -> [a,b]) firstHalf $ reverse lastHalf
